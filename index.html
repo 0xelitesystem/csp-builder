@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSP Builder</title>
+<meta name="description" content="Build Content-Security-Policy headers visually. Pick directives, add sources, copy the resulting header. Browser-only.">
+<meta name="ai.description" content="Single-file HTML tool for constructing Content-Security-Policy headers. Provides per-directive controls (script-src, style-src, img-src, etc.), keyword toggles ('self', 'none', 'unsafe-inline', etc.), and a way to add custom hosts. Generates the final header string, an example HTML meta tag, and an Express/Node middleware snippet.">
+<style>
+:root{--bg:#eaeaef;--surface:#fff;--surface-2:#f0f0f4;--ink:#16162a;--ink-soft:#4d4d6b;--rule:#cbcbd9;--rule-strong:#16162a;--accent:#1e40af;--accent-soft:#dbe5f7;--mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;--sans:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;--ok:#1f6f43;--ok-soft:#e3f2ea;--err:#b3261e;--err-soft:#fbe9e7;--warn:#a04500;--warn-soft:#faecd9}
+[data-theme="dark"]{--bg:#0f0f1c;--surface:#1a1a2e;--surface-2:#161628;--ink:#eaebf2;--ink-soft:#9596b5;--rule:#2a2a42;--rule-strong:#eaebf2;--accent:#7da7ff;--accent-soft:#1c2c4d;--ok:#7fc99c;--ok-soft:#1f3327;--err:#f08585;--err-soft:#3d2222;--warn:#e6a960;--warn-soft:#3d2f1c}
+[data-theme="dark"] button.primary, [data-theme="dark"] a.primary { color: var(--bg) !important; }
+[data-theme="dark"] button.primary, [data-theme="dark"] a.primary { border-color: var(--accent) !important; }
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.55;font-size:14px;min-height:100vh}
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--accent);color:#fff;padding:.5rem 1rem;z-index:100;font-weight:600}
+.skip-link:focus{left:1rem;top:1rem}
+.layout{max-width:1100px;margin:0 auto;padding:2rem 1.25rem 4rem}
+header{display:grid;grid-template-columns:1fr auto;gap:1.5rem;align-items:end;padding-bottom:1.25rem;border-bottom:1px solid var(--rule-strong);margin-bottom:1.5rem}
+.brand{font-family:var(--mono);font-size:.6875rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.5rem;font-weight:600}
+h1{font-size:clamp(1.625rem,4vw,2.375rem);font-weight:700;letter-spacing:-.02em;line-height:1.05}
+h1 .accent{color:var(--accent)}
+.subtitle{margin-top:.5rem;color:var(--ink-soft);font-size:.9375rem;max-width:520px}
+.theme-toggle{background:var(--surface);color:var(--ink);border:1px solid var(--rule-strong);border-radius:3px;padding:.5rem .75rem;font:inherit;font-size:.75rem;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;display:inline-flex;align-items:center;gap:.4rem;flex-shrink:0}
+.theme-toggle:hover{background:var(--ink);color:var(--bg)}
+.theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.theme-toggle svg{width:14px;height:14px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:1rem 1.25rem;margin-bottom:1rem}
+.panel-head{display:flex;align-items:baseline;gap:.625rem;margin-bottom:.625rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
+.panel-num{font-family:var(--mono);font-size:.6875rem;font-weight:700;color:var(--accent);letter-spacing:.08em}
+.panel-title{font-size:.8125rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.directive{padding:.625rem .75rem;border:1px solid var(--rule);border-radius:3px;margin-bottom:.5rem;background:var(--surface-2)}
+.directive-name{font-family:var(--mono);font-size:.875rem;font-weight:700;margin-bottom:.4rem}
+.keywords{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem}
+.kw{font-family:var(--mono);font-size:.75rem;font-weight:600;padding:.25rem .5rem;background:var(--bg);color:var(--ink);border:1px solid var(--rule);border-radius:3px;cursor:pointer;user-select:none}
+.kw:hover{border-color:var(--accent)}
+.kw[aria-checked="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.kw.unsafe[aria-checked="true"]{background:var(--err);border-color:var(--err)}
+.kw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.host-input{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:.4rem .5rem;font:inherit;font-family:var(--mono);font-size:.8125rem;margin-top:.3rem}
+.host-input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.help-row{font-size:.6875rem;color:var(--ink-soft);font-family:var(--mono);margin-top:.3rem}
+.output{background:var(--surface-2);border:1px solid var(--rule);border-radius:3px;padding:.75rem;font-family:var(--mono);font-size:.8125rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin-bottom:.625rem}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.5rem}
+button.primary,button.secondary{font:inherit;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:.45rem .85rem;border-radius:3px;cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+button.primary:hover:not(:disabled){filter:brightness(.92)}
+button.secondary{background:var(--surface);color:var(--ink);border:1px solid var(--rule-strong)}
+button.secondary:hover:not(:disabled){background:var(--ink);color:var(--bg)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tabs{display:flex;border:1px solid var(--rule-strong);border-radius:3px;overflow:hidden;margin-bottom:.625rem}
+.tab{flex:1;background:var(--surface);color:var(--ink);border:none;border-right:1px solid var(--rule-strong);padding:.5rem;font:inherit;font-size:.6875rem;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.06em}
+.tab:last-child{border-right:none}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.warn-box{background:var(--warn-soft);border:1px solid var(--warn);color:var(--warn);padding:.5rem .75rem;border-radius:3px;font-size:.75rem;margin-top:.5rem;display:none}
+.warn-box.show{display:block}
+footer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.75rem;color:var(--ink-soft);line-height:1.7}
+footer a{color:var(--ink-soft);text-decoration:underline;text-underline-offset:2px}
+footer a:hover{color:var(--accent)}
+@media(max-width:540px){.layout{padding:1.25rem 1rem 3rem}h1{font-size:1.375rem}header{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-theme="light">
+<a href="#main" class="skip-link">Skip to main</a>
+<div class="layout">
+<header>
+<div>
+<div class="brand">CSP // BUILDER</div>
+<h1>Build a <span class="accent">CSP header.</span></h1>
+<p class="subtitle">Pick directives. Toggle keywords. Add custom hosts. Copy the result as a header, meta tag, or Express snippet.</p>
+</div>
+<button type="button" class="theme-toggle" id="theme-btn" aria-label="Toggle theme" aria-pressed="false">
+<svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+</svg>
+<span id="theme-label">Dark</span>
+</button>
+</header>
+<main id="main">
+<div class="panel">
+<div class="panel-head"><span class="panel-num">01</span><h2 class="panel-title">Directives</h2></div>
+<div id="directives-container"></div>
+</div>
+<div class="panel">
+<div class="panel-head"><span class="panel-num">02</span><h2 class="panel-title">Output</h2></div>
+<div class="tabs" role="tablist">
+<button class="tab" data-mode="header" role="tab" aria-selected="true">HTTP Header</button>
+<button class="tab" data-mode="meta" role="tab" aria-selected="false">HTML meta</button>
+<button class="tab" data-mode="express" role="tab" aria-selected="false">Express snippet</button>
+</div>
+<div class="output" id="output"></div>
+<div class="row"><button type="button" class="primary" id="copy-btn">Copy</button><button type="button" class="secondary" id="reset-btn">Reset</button></div>
+<div class="warn-box" id="warn-box"></div>
+</div>
+</main>
+<footer>
+<p>Source: <a href="https://github.com/0xelitesystem/csp-builder" target="_blank" rel="noopener">github.com/0xelitesystem/csp-builder</a></p>
+<p>Related: <a href="https://github.com/0xelitesystem/cron-builder" target="_blank" rel="noopener">cron-builder</a> &middot; <a href="https://github.com/0xelitesystem/webhook-inspector" target="_blank" rel="noopener">webhook-inspector</a></p>
+<p>CSP is hard to test without breaking your app. Always deploy a new policy with <code>Content-Security-Policy-Report-Only</code> first and watch reports for a week before enforcing.</p>
+</footer>
+</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const DIRECTIVES=[
+  {name:"default-src",keywords:["'self'","'none'","*","https:","data:"],hint:"Fallback for all -src directives. Most apps want 'self'."},
+  {name:"script-src",keywords:["'self'","'none'","'unsafe-inline'","'unsafe-eval'","https:","data:","blob:","'strict-dynamic'"],hint:"Where scripts can load from. Avoid 'unsafe-inline' and 'unsafe-eval' in production."},
+  {name:"style-src",keywords:["'self'","'none'","'unsafe-inline'","https:","data:"],hint:"Where stylesheets can load from. 'unsafe-inline' is sometimes hard to avoid for legacy CSS."},
+  {name:"img-src",keywords:["'self'","'none'","*","https:","data:","blob:"],hint:"Where images can load from. data: is often needed for inline SVG and small icons."},
+  {name:"font-src",keywords:["'self'","'none'","https:","data:"],hint:"Where fonts can load from."},
+  {name:"connect-src",keywords:["'self'","'none'","*","https:","wss:"],hint:"Where fetch, WebSocket, EventSource can connect to."},
+  {name:"media-src",keywords:["'self'","'none'","https:","data:","blob:"],hint:"Where audio/video can load from."},
+  {name:"frame-src",keywords:["'self'","'none'","https:"],hint:"Where iframes can load from."},
+  {name:"frame-ancestors",keywords:["'self'","'none'","*"],hint:"Who can embed THIS page in an iframe. Modern equivalent of X-Frame-Options."},
+  {name:"object-src",keywords:["'none'","'self'"],hint:"Where <object>, <embed> can load from. Almost always 'none'."},
+  {name:"base-uri",keywords:["'self'","'none'"],hint:"What URLs <base href=\"\"> can be set to."},
+  {name:"form-action",keywords:["'self'","'none'","https:"],hint:"Where forms can submit to."}
+];
+
+const UNSAFE=["'unsafe-inline'","'unsafe-eval'","*"];
+
+let state={};
+let mode="header";
+
+function init(){
+  const c=$("directives-container");
+  for(const d of DIRECTIVES){
+    state[d.name]={enabled:false,keywords:new Set(),hosts:""};
+    const el=document.createElement("div");
+    el.className="directive";
+    el.dataset.name=d.name;
+    el.innerHTML=`
+      <label class="directive-name">
+        <input type="checkbox" class="enable" data-name="${escapeHtml(d.name)}" style="vertical-align:-1px;margin-right:.4rem">
+        ${escapeHtml(d.name)}
+      </label>
+      <div class="keywords">${d.keywords.map(k=>`<span class="kw ${UNSAFE.includes(k)?"unsafe":""}" data-kw="${escapeHtml(k)}" tabindex="0" role="checkbox" aria-checked="false">${escapeHtml(k)}</span>`).join("")}</div>
+      <input type="text" class="host-input" data-name="${escapeHtml(d.name)}" placeholder="cdn.example.com api.example.com (space-separated)" autocomplete="off" spellcheck="false">
+      <div class="help-row">${escapeHtml(d.hint)}</div>
+    `;
+    c.appendChild(el);
+    // Wire enable checkbox
+    el.querySelector(".enable").addEventListener("change",e=>{
+      state[d.name].enabled=e.target.checked;
+      update();
+    });
+    // Wire keywords
+    el.querySelectorAll(".kw").forEach(k=>{
+      k.addEventListener("click",()=>toggleKw(d.name,k));
+      k.addEventListener("keydown",e=>{
+        if(e.key===" "||e.key==="Enter"){e.preventDefault();toggleKw(d.name,k)}
+      });
+    });
+    // Wire hosts input
+    el.querySelector(".host-input").addEventListener("input",e=>{
+      state[d.name].hosts=e.target.value;
+      update();
+    });
+  }
+  // Set sensible defaults: enable default-src and script-src with 'self'
+  ["default-src","script-src","style-src","img-src","connect-src"].forEach(n=>{
+    state[n].enabled=true;
+    state[n].keywords.add("'self'");
+    document.querySelector(`.directive[data-name="${n}"] .enable`).checked=true;
+    document.querySelector(`.directive[data-name="${n}"] .kw[data-kw="'self'"]`).setAttribute("aria-checked","true");
+  });
+  update();
+}
+
+function toggleKw(name,kwEl){
+  const k=kwEl.dataset.kw;
+  const set=state[name].keywords;
+  if(set.has(k)){set.delete(k);kwEl.setAttribute("aria-checked","false")}
+  else{set.add(k);kwEl.setAttribute("aria-checked","true")}
+  // Also enable the directive if a keyword is checked on a disabled one
+  if(set.size>0&&!state[name].enabled){
+    state[name].enabled=true;
+    document.querySelector(`.directive[data-name="${name}"] .enable`).checked=true;
+  }
+  update();
+}
+
+function buildHeader(){
+  const parts=[];
+  for(const d of DIRECTIVES){
+    const s=state[d.name];
+    if(!s.enabled)continue;
+    const tokens=[];
+    for(const k of s.keywords)tokens.push(k);
+    const hosts=s.hosts.split(/\s+/).map(h=>h.trim()).filter(Boolean);
+    for(const h of hosts)tokens.push(h);
+    if(tokens.length===0)continue;
+    parts.push(d.name+" "+tokens.join(" "));
+  }
+  return parts.join("; ");
+}
+
+function detectWarnings(header){
+  const warnings=[];
+  if(header.includes("'unsafe-inline'"))warnings.push("Contains 'unsafe-inline'. This defeats the main purpose of CSP for that directive. Consider using nonces or hashes instead.");
+  if(header.includes("'unsafe-eval'"))warnings.push("Contains 'unsafe-eval'. Required for some libraries but is a significant XSS risk.");
+  if(/script-src[^;]*\*[\s;]/.test(header)||/script-src[^;]*\* /.test(header))warnings.push("script-src includes wildcard *. This allows scripts from any host.");
+  if(!header.includes("default-src")&&!header.includes("script-src"))warnings.push("Neither default-src nor script-src is set. Most browsers will allow inline scripts as a result.");
+  if(header.includes("frame-ancestors")===false)warnings.push("frame-ancestors is not set. Without it, your site can be embedded in iframes by any origin (clickjacking risk).");
+  return warnings;
+}
+
+function buildOutput(){
+  const header=buildHeader();
+  const warnings=detectWarnings(header);
+  const wb=$("warn-box");
+  if(warnings.length>0){
+    wb.innerHTML="<strong>Heads up:</strong><br>"+warnings.map(w=>"&middot; "+escapeHtml(w)).join("<br>");
+    wb.classList.add("show");
+  }else{
+    wb.classList.remove("show");
+  }
+  if(mode==="header"){
+    return header?`Content-Security-Policy: ${header}`:"(no directives enabled)";
+  }
+  if(mode==="meta"){
+    return header?`<meta http-equiv="Content-Security-Policy" content="${header}">`:"(no directives enabled)";
+  }
+  if(mode==="express"){
+    return `// Express middleware\napp.use((req, res, next) => {\n  res.setHeader(\n    "Content-Security-Policy",\n    "${header.replace(/"/g,'\\"')}"\n  );\n  next();\n});`;
+  }
+}
+
+function update(){
+  $("output").textContent=buildOutput();
+}
+
+document.querySelectorAll(".tab").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected","false"));
+    b.setAttribute("aria-selected","true");
+    mode=b.dataset.mode;
+    update();
+  });
+});
+
+$("copy-btn").addEventListener("click",async()=>{
+  try{await navigator.clipboard.writeText($("output").textContent)}catch{}
+});
+
+$("reset-btn").addEventListener("click",()=>{
+  for(const d of DIRECTIVES){
+    state[d.name]={enabled:false,keywords:new Set(),hosts:""};
+  }
+  document.querySelectorAll(".enable").forEach(el=>el.checked=false);
+  document.querySelectorAll(".kw").forEach(el=>el.setAttribute("aria-checked","false"));
+  document.querySelectorAll(".host-input").forEach(el=>el.value="");
+  // Re-apply defaults
+  ["default-src","script-src","style-src","img-src","connect-src"].forEach(n=>{
+    state[n].enabled=true;
+    state[n].keywords.add("'self'");
+    document.querySelector(`.directive[data-name="${n}"] .enable`).checked=true;
+    document.querySelector(`.directive[data-name="${n}"] .kw[data-kw="'self'"]`).setAttribute("aria-checked","true");
+  });
+  update();
+});
+
+function applyTheme(t){
+  document.body.dataset.theme=t;
+  $("theme-label").textContent=t==="dark"?"Light":"Dark";
+  $("theme-btn").setAttribute("aria-pressed",String(t==="dark"));
+  const icon=$("theme-icon");
+  if(t==="dark")icon.innerHTML='<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+  else icon.innerHTML='<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>';
+}
+$("theme-btn").addEventListener("click",()=>applyTheme(document.body.dataset.theme==="dark"?"light":"dark"));
+if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)applyTheme("dark");
+
+init();
+</script>
+</body>
+</html>
