@@ -42,7 +42,11 @@ The tool flags common mistakes:
 
 - `'unsafe-inline'` defeats CSP for that directive, use nonces or hashes
 - `'unsafe-eval'` is high-risk, only some libraries actually need it
-- Wildcard `*` in `script-src` allows any script
+- Wildcard `*` on the effective script source (`script-src`, or `default-src` when `script-src` is absent)
+- `data:` on the effective script source, which is close to `'unsafe-inline'`
+- `'none'` listed next to other sources, which browsers ignore because `'none'` must be the only source
+- `'strict-dynamic'` with no nonce or hash, which blocks every script tag on the page
+- `frame-ancestors` in the HTML meta output, which browsers ignore outside a real header
 - Missing `default-src` AND `script-src` (browsers may default to permissive)
 - Missing `frame-ancestors` (clickjacking risk)
 
@@ -54,7 +58,7 @@ If you don't have a report endpoint, use a service like [report-uri.com](https:/
 
 ## Tech
 
-- Single HTML file, ~700 lines
+- Single HTML file, ~370 lines
 - Vanilla JS, no frameworks, no dependencies
 - Light and dark themes with OS preference detection
 - WCAG AA contrast on both themes

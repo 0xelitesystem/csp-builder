@@ -16,6 +16,7 @@
 [data-theme="dark"]{--bg:#0f0f1c;--surface:#1a1a2e;--surface-2:#161628;--ink:#eaebf2;--ink-soft:#9596b5;--rule:#2a2a42;--rule-strong:#eaebf2;--accent:#7da7ff;--accent-soft:#1c2c4d;--ok:#7fc99c;--ok-soft:#1f3327;--err:#f08585;--err-soft:#3d2222;--warn:#e6a960;--warn-soft:#3d2f1c}
 [data-theme="dark"] button.primary, [data-theme="dark"] a.primary { color: var(--bg) !important; }
 [data-theme="dark"] button.primary, [data-theme="dark"] a.primary { border-color: var(--accent) !important; }
+[data-theme="dark"] .kw[aria-checked="true"], [data-theme="dark"] .skip-link { color: var(--bg) !important; }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -113,6 +114,9 @@ footer a:hover{color:var(--accent)}
 "use strict";
 const $=id=>document.getElementById(id);
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Attribute-safe escape for the meta tab. Leaves ' alone so the common output
+// stays readable as default-src 'self' instead of default-src &#39;self&#39;.
+const escapeAttr=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
 const DIRECTIVES=[
   {name:"default-src",keywords:["'self'","'none'","*","https:","data:"],hint:"Fallback for all -src directives. Most apps want 'self'."},
@@ -207,19 +211,48 @@ function buildHeader(){
   return parts.join("; ");
 }
 
-function detectWarnings(header){
+// Parse the built header back into directive -> source tokens. Null-prototype
+// map so a directive literally named __proto__ (typeable via the host field)
+// cannot reach Object.prototype.
+function parsePolicy(header){
+  const dirs=Object.create(null);
+  const order=[];
+  for(const part of header.split(";")){
+    const toks=part.trim().split(/\s+/).filter(Boolean);
+    if(toks.length===0)continue;
+    const name=toks[0].toLowerCase();
+    if(!Object.prototype.hasOwnProperty.call(dirs,name)){dirs[name]=[];order.push(name)}
+    for(let i=1;i<toks.length;i++)dirs[name].push(toks[i]);
+  }
+  return {dirs:dirs,order:order};
+}
+
+function detectWarnings(header,outputMode){
   const warnings=[];
+  const p=parsePolicy(header);
+  const has=n=>Object.prototype.hasOwnProperty.call(p.dirs,n);
+  // Scripts are governed by script-src, or by default-src when script-src is absent.
+  const scriptName=has("script-src")?"script-src":(has("default-src")?"default-src":null);
+  const scriptSrc=scriptName?p.dirs[scriptName]:[];
   if(header.includes("'unsafe-inline'"))warnings.push("Contains 'unsafe-inline'. This defeats the main purpose of CSP for that directive. Consider using nonces or hashes instead.");
   if(header.includes("'unsafe-eval'"))warnings.push("Contains 'unsafe-eval'. Required for some libraries but is a significant XSS risk.");
-  if(/script-src[^;]*\*[\s;]/.test(header)||/script-src[^;]*\* /.test(header))warnings.push("script-src includes wildcard *. This allows scripts from any host.");
-  if(!header.includes("default-src")&&!header.includes("script-src"))warnings.push("Neither default-src nor script-src is set. Most browsers will allow inline scripts as a result.");
-  if(header.includes("frame-ancestors")===false)warnings.push("frame-ancestors is not set. Without it, your site can be embedded in iframes by any origin (clickjacking risk).");
+  if(scriptSrc.indexOf("*")>=0)warnings.push(scriptName+" includes wildcard *. This allows scripts from any host.");
+  if(scriptSrc.indexOf("data:")>=0)warnings.push(scriptName+" allows data:. Anyone who can inject a tag can then run script from a data: URI, which is about as weak as 'unsafe-inline'.");
+  const noneMixed=p.order.filter(n=>p.dirs[n].length>1&&p.dirs[n].indexOf("'none'")>=0);
+  if(noneMixed.length>0)warnings.push("'none' sits next to other sources in "+noneMixed.join(", ")+". CSP requires 'none' to be the only source in a directive, so browsers ignore it and the other sources still apply.");
+  if(scriptSrc.indexOf("'strict-dynamic'")>=0&&!scriptSrc.some(t=>/^'(nonce|sha256|sha384|sha512)-/.test(t)))warnings.push("'strict-dynamic' is set with no nonce or hash. It makes browsers ignore 'self', https: and every host listed here, so every script tag on the page is blocked. Add a per-request 'nonce-...' server-side first.");
+  if(!has("default-src")&&!has("script-src"))warnings.push("Neither default-src nor script-src is set. Most browsers will allow inline scripts as a result.");
+  if(!has("frame-ancestors"))warnings.push("frame-ancestors is not set. Without it, your site can be embedded in iframes by any origin (clickjacking risk).");
+  if(outputMode==="meta"){
+    const ignored=["frame-ancestors","report-uri","report-to","sandbox"].filter(has);
+    if(ignored.length>0)warnings.push(ignored.join(", ")+" is ignored when delivered in a meta tag. Browsers only honor it as a real Content-Security-Policy response header, so use the HTTP Header tab for it.");
+  }
   return warnings;
 }
 
 function buildOutput(){
   const header=buildHeader();
-  const warnings=detectWarnings(header);
+  const warnings=detectWarnings(header,mode);
   const wb=$("warn-box");
   if(warnings.length>0){
     wb.innerHTML="<strong>Heads up:</strong><br>"+warnings.map(w=>"&middot; "+escapeHtml(w)).join("<br>");
@@ -231,10 +264,10 @@ function buildOutput(){
     return header?`Content-Security-Policy: ${header}`:"(no directives enabled)";
   }
   if(mode==="meta"){
-    return header?`<meta http-equiv="Content-Security-Policy" content="${header}">`:"(no directives enabled)";
+    return header?`<meta http-equiv="Content-Security-Policy" content="${escapeAttr(header)}">`:"(no directives enabled)";
   }
   if(mode==="express"){
-    return `// Express middleware\napp.use((req, res, next) => {\n  res.setHeader(\n    "Content-Security-Policy",\n    "${header.replace(/"/g,'\\"')}"\n  );\n  next();\n});`;
+    return `// Express middleware\napp.use((req, res, next) => {\n  res.setHeader(\n    "Content-Security-Policy",\n    "${header.replace(/\\/g,"\\\\").replace(/"/g,'\\"')}"\n  );\n  next();\n});`;
   }
 }
 
@@ -251,8 +284,17 @@ document.querySelectorAll(".tab").forEach(b=>{
   });
 });
 
+const COPY_LABEL=$("copy-btn").textContent;
 $("copy-btn").addEventListener("click",async()=>{
-  try{await navigator.clipboard.writeText($("output").textContent)}catch{}
+  const btn=$("copy-btn");
+  try{
+    await navigator.clipboard.writeText($("output").textContent);
+  }catch{
+    // Clipboard access can be blocked (insecure context, permission denied).
+    // Say so instead of looking like a dead button.
+    btn.textContent="Copy failed";
+    setTimeout(()=>{btn.textContent=COPY_LABEL},1600);
+  }
 });
 
 $("reset-btn").addEventListener("click",()=>{
