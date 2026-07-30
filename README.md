@@ -66,6 +66,10 @@ If you don't have a report endpoint, use a service like [report-uri.com](https:/
 - Doesn't support every CSP directive. The ones not listed (`worker-src`, `manifest-src`, `prefetch-src`, etc.) are rarely needed; add them manually if you do.
 - Doesn't generate Trusted Types policies.
 
+## More
+
+Part of a catalog of single-file browser tools and plain-language references, all MIT licensed and dependency-free: [0xelitesystem.github.io](https://0xelitesystem.github.io/). Built by [elitesystem.ai](https://elitesystem.ai).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
