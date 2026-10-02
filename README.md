@@ -4,13 +4,15 @@ Build Content-Security-Policy headers visually. Pick directives, toggle keywords
 
 **Live demo:** https://0xelitesystem.github.io/csp-builder/
 
-## Why
+## Why this exists
 
 CSP is one of the most useful security headers and one of the most painful to write correctly. The MDN reference is dense, the keywords are easy to typo (forgetting the quotes around `'self'`), and getting the directive list right is its own thing.
 
 This tool gives you a checklist UI: pick which directives you want, toggle the keywords each one supports, paste in your custom hosts. The output is generated live and warns about common pitfalls.
 
-## Use it
+It is a single HTML file with no tracking and no network calls, and it is MIT licensed.
+
+## Use
 
 Open `index.html` in any browser, or visit the hosted demo at `https://0xelitesystem.github.io/csp-builder/` once Pages is enabled.
 
@@ -69,6 +71,23 @@ If you don't have a report endpoint, use a service like [report-uri.com](https:/
 - Doesn't validate against a real test page. Use the browser DevTools "Issues" tab or `report-uri.com` for that.
 - Doesn't support every CSP directive. The ones not listed (`worker-src`, `manifest-src`, `prefetch-src`, etc.) are rarely needed; add them manually if you do.
 - Doesn't generate Trusted Types policies.
+
+## Privacy
+
+Everything runs in your browser. The page makes no network requests, loads no external scripts or fonts, and has no analytics or tracking. The policy you build, including any hosts you type, never leaves your machine. The one thing the page saves is your light or dark theme choice, written to `localStorage` under the key `theme` when you press the theme toggle. Clearing site data removes it.
+
+## Run locally
+
+```
+git clone https://github.com/0xelitesystem/csp-builder
+cd csp-builder
+```
+
+Then open `index.html` in any modern browser, or serve the folder with `python -m http.server` and visit http://localhost:8000/.
+
+## Build
+
+No build step. The whole tool is one `index.html` file with inline CSS and JavaScript, and there is nothing to install or compile.
 
 ## More
 
